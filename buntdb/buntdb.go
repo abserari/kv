@@ -4,9 +4,13 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/tidwall/btree"
+	"github.com/tidwall/match"
+	"github.com/tidwall/rtree"
 )
 
 var (
@@ -156,4 +160,39 @@ func (db *DB) Save(wr io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func (db *DB) Load(rd io.Reader) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if db.persist {
+		return ErrpersistenceActive
+	}
+	return db.readload(rd, time.Now())
+}
+
+type index struct {
+	btr     *btree.BTree
+	rtr     *rtree.RTree
+	name    string
+	pattern string
+	less    func(a, b string) bool
+	rect    func(item string) (min, max []float64)
+	db      *DB
+	opts    IndexOptions
+}
+
+func (idx *index) match(key string) bool {
+	if idx.pattern == "*" {
+		return true
+	}
+	if idx.opts.CaseInsensitiveKeyMatching {
+		for i := 0; i < len(key); i++ {
+			if key[i] >= 'A' && key[i] <= 'Z' {
+				key = strings.ToLower(key)
+				break
+			}
+		}
+	}
+	return match.Match(key, idx.pattern)
 }
